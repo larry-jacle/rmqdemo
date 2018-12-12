@@ -1,0 +1,51 @@
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:rabbit="http://www.springframework.org/schema/rabbit"
+       xmlns:context="http://www.springframework.org/schema/context"
+       xsi:schemaLocation="http://www.springframework.org/schema/rabbit
+	http://www.springframework.org/schema/rabbit/spring-rabbit-1.7.xsd
+	http://www.springframework.org/schema/beans
+	http://www.springframework.org/schema/beans/spring-beans-4.0.xsd">
+
+    <!--  1.定义RabbitMQ的连接工厂 -->
+    <rabbit:connection-factory id="connectionFactory" host="192.168.17.9" port="5672" username="admin" password="admin"
+                               virtual-host="/" publisher-confirms="true"/>
+    <rabbit:admin connection-factory="connectionFactory"/>
+
+    <rabbit:queue name="myQueue" auto-declare="true" durable="true"/>
+    <!-- 2.spring template 定义Rabbit模板，指定连接工厂以及定义exchange -->
+    <rabbit:template id="amqpTemplate" connection-factory="connectionFactory" exchange="fanoutExchange"
+                     message-converter="jsonMessageConverter" retry-template="retryTemplate" confirm-callback="confirmCallback"/>
+
+    <!-- 定义交换器，自动声明 -->
+    <rabbit:fanout-exchange name="fanoutExchange" auto-declare="true">
+        <rabbit:bindings>
+            <rabbit:binding queue="myQueue"/>
+        </rabbit:bindings>
+    </rabbit:fanout-exchange>
+
+
+    <bean id="retryTemplate" class="org.springframework.retry.support.RetryTemplate">
+        <property name="backOffPolicy">
+            <bean class="org.springframework.retry.backoff.ExponentialBackOffPolicy">
+                <property name="initialInterval" value="200"/>
+                <property name="maxInterval" value="30000"/>
+            </bean>
+        </property>
+        <property name="retryPolicy">
+            <bean class="org.springframework.retry.policy.SimpleRetryPolicy">
+                <property name="maxAttempts" value="5"/>
+            </bean>
+        </property>
+    </bean>
+
+    <!-- 队列监听,消费者自动确认和手动确认，一般的设置为手动确认，防止消费者处理不过来，丢失消息 -->
+    <rabbit:listener-container connection-factory="connectionFactory" acknowledge="manual" prefetch="1">
+        <rabbit:listener ref="receiver" method="onMessage" queue-names="myQueue"/>
+    </rabbit:listener-container>
+
+    <bean id="receiver" class="com.jacle.spring.Receiver">
+    </bean>
+    <!--<bean id="jsonMessageConverter" class="org.springframework.amqp.support.converter.Jackson2JsonMessageConverter" />-->
+    <bean id="jsonMessageConverter" class="com.jacle.spring.Gson2MessageConverter"/>
+    <bean id="confirmCallback" class="com.jacle.spring.ConfirmCallback"/>
+</beans>
